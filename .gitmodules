@@ -1,3 +1,0 @@
-[submodule "sub-test"]
-	path = sub-test
-	url = https://github.com/priyarkverma/sub-test.git
