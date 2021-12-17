@@ -1,0 +1,115 @@
+{{ $registry := "" }}
+{{ if ne .Values.namespace.name "default" }}
+{{ $registry = eq .Values.environment "prod" "staging" | ternary  "274334742953.dkr.ecr.ap-south-1.amazonaws.com/bb-engg/" "274334742953.dkr.ecr.us-east-1.amazonaws.com/bb-engg/" }}
+{{ end }}
+
+{{- $root := . }}
+{{- range .Values.deployments }}
+{{ $currentDeployment := . }}
+{{ if or (ne $.Values.environment "staging") (ne $currentDeployment.podLabels.type "consumer") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $currentDeployment.name }}
+  namespace: {{ $.Values.namespace.name }}
+  labels:
+    app: {{ $currentDeployment.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $currentDeployment.name }}
+  minReadySeconds: {{ $currentDeployment.minReadySeconds | default 200 }}
+  {{- with $rollingUpdate := $currentDeployment.rollingUpdate }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $rollingUpdate.maxSurge }}
+      maxUnavailable: {{ $rollingUpdate.maxUnavailable }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ $currentDeployment.name }}
+      annotations:
+        {{- include "app.infraAnnotations" $root | nindent 6 -}}
+        {{- if $currentDeployment.podAnnotations }}
+        {{- $iamRole := eq $.Values.namespace.name "prod" "staging" | ternary  "arn:aws:iam::274334742953:role/" "arn:aws:iam::274334742953:role/" }}
+        iam.amazonaws.com/role: {{ $iamRole }}{{ $currentDeployment.podAnnotations.iamRolesQualifer }}
+        {{- end }}
+    spec:
+      {{- if hasKey . "affinity"  }}
+      {{- include "app.affinity" $currentDeployment.affinity | trim | nindent 6 }}
+      {{- end }}
+      {{- include "app.nodeLabels" $.Values.nodeLabels | trim | nindent 6 -}}
+      {{- if $currentDeployment.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ $currentDeployment.imagePullSecret }}
+      {{- end }}
+      {{- if $currentDeployment.podLabels.hostNetwork }}
+      hostNetwork: {{ $currentDeployment.podLabels.hostNetwork }}
+      {{- end }}
+      {{- if $currentDeployment.podLabels.dnsPolicy }}
+      dnsPolicy: {{ $currentDeployment.podLabels.dnsPolicy }}
+      {{- end }}
+      containers:
+      {{- range $currentDeployment.containers }}
+      - name: {{ .name }}
+        {{- if .livenessProbe }}
+        {{- $probe := dict "probe" .livenessProbe "type" "livenessProbe" }}
+        {{- include "app.containerProbes" $probe | nindent 8 }}
+        {{- end }}
+        {{- if .readinessProbe }}
+        {{- $probe := dict "probe" .readinessProbe "type" "readinessProbe" }}
+        {{- include "app.containerProbes" $probe | nindent 8 }}
+        {{- end }}
+        {{- if .startupProbe }}
+        {{- $probe := dict "probe" .startupProbe "type" "startupProbe" }}
+        {{- include "app.containerProbes" $probe | nindent 8 }}
+        {{- end }}
+        envFrom:
+        {{- if .configMapName }}
+        - configMapRef:
+            name: {{ .configMapName }}
+        {{- end }}
+        {{- with $infraDependecies := $.Values.requiredInfraDependencies }}
+        - secretRef:
+            name: {{ $infraDependecies.name }}
+        {{- end }}
+        #TODO: fix resources - with resources the pods are running in insufficient reosurces
+        {{- if not .resources }}
+        resources:
+        {{- toYaml .resources | nindent 14 }}
+        {{- end }}
+        image: {{ $registry }}{{ .imageName }}:{{ .imageTag | default "" }}
+        imagePullPolicy: {{ .imagePullPolicy | default "IfNotPresent" }}
+        ports:
+          - protocol: TCP
+            name: {{ .name }}-port
+            containerPort: {{ .containerPort }}
+
+        {{- if .command }}
+        command:
+        {{- toYaml .command | nindent 14 }}
+        {{- end }}
+
+        {{- if .args }}
+        args:
+        {{- toYaml .args | nindent 14 }}
+        {{- end }}
+
+        {{- if .volumeMounts }}
+        volumeMounts:
+          - name: {{ .volumeMounts.name }}
+            mountPath: {{ .volumeMounts.mountPath }}
+        {{- end }}
+      {{- end }}
+      
+      {{- if .volumes }}
+      volumes:
+        - name: {{ .volumes.name }}
+          persistentVolumeClaim:
+            claimName: {{ .volumes.claimName }}
+      {{- end }}
+    {{- end }}
+---
+  {{- end }}
