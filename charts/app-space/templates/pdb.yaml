@@ -1,0 +1,16 @@
+{{- range .Values.deployments }}
+  {{ $currentDeployment := . }}
+  {{- with $pdb := $currentDeployment.pdb }}
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $currentDeployment.name }}-pdb
+  namespace: {{ $.Values.namespace.name }}
+spec:
+  minAvailable: {{ $pdb.minAvailable }} #keep one pod always available
+  selector:
+    matchLabels:
+      app: {{ $currentDeployment.name }}
+  {{- end }} #end of with pdb block
+---
+  {{- end }} #end of deploymennt loop

@@ -1,0 +1,19 @@
+{{- range .Values.deployments }} #run through each deployment
+{{ $currentDeployment := . }} #take current deployment
+{{- if $currentDeployment.volumes }} #create a pvc if there is a volumes in the deployment
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $currentDeployment.volumes.name }}-pvc
+  namespace: {{ $.Values.namespace.name }}
+spec:
+  volumeMode: {{ $currentDeployment.volumes.mode }}
+  storageClassName: {{ $currentDeployment.volumes.storageClassName }}
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: {{ $currentDeployment.volumes.storage }}
+{{- end }}
+---
+  {{- end }}

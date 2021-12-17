@@ -1,0 +1,33 @@
+{{- range .Values.deployments }}
+{{ $currentDeployment := . }}
+{{- with $hpa := $currentDeployment.hpa }}
+{{- with $nativehpa := $hpa.native }}
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $currentDeployment.name }}-hpa
+  namespace: {{ $.Values.namespace.name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $currentDeployment.name }} #this horizontal pod autoscaler managing the deployment with this name
+  minReplicas: {{ $nativehpa.minReplicas }}
+  maxReplicas: {{ $nativehpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $nativehpa.targetCPUAverage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $nativehpa.targetMemoryAverage }}
+  {{- end }}
+  {{- end }} #end of nativehpa scope
+---
+  {{- end }} #end of deployments
